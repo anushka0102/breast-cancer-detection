@@ -1,0 +1,185 @@
+import numpy as np
+import pandas as pd
+from sklearn.preprocessing import StandardScaler
+from sklearn.preprocessing import OrdinalEncoder
+
+hello=pd.read_csv("breast-cancer.csv")
+print(hello)
+y=hello[['diagnosis']].to_numpy()
+enc = OrdinalEncoder()
+y=enc.fit_transform(y)
+
+y_train=y[:454][:]
+y_train=y_train.T
+
+y_test=y[454:][:]
+y_test=y_test.T
+
+x=hello.to_numpy()
+x=np.delete(x,0,1)
+x=np.delete(x,0,1)
+x=np.delete(x,0,1)
+
+scaler = StandardScaler()
+x=scaler.fit_transform(x)
+
+x_train=x[:454][:]
+x_train=x_train.T
+x_test=x[454:][:]
+x_test=x_test.T
+
+
+l_fun=['relu','tanh','sigmoid']
+l_dims=[29,20,10,1]
+
+n_i=20000
+lr=0.0075
+
+def sigmoid(z):
+    s=1/(1+np.exp(-z))
+    return s
+
+def relu(z):
+    a = np.maximum(0,z)
+    return a
+
+def sigmoid_backward(actis,dal,i):
+    a=actis['a'+str(i)]
+    dz=dal*a*(1-a)
+    return dz
+
+def relu_backward(actis,dal,i):
+    Z=actis['z'+str(i)]
+    dZ = np.array(dal, copy=True)
+    dZ[Z <= 0] = 0
+    return dZ
+
+def tanh_backward(actis,dal,i):
+    a=actis['a'+str(i)]
+    dz=dal*(1-np.power(a,2))
+    return dz
+
+def initialization(l_dims):
+    params={}
+    l=len(l_dims)
+    
+    for i in range(1,l):
+        params['w'+str(i)]=np.random.randn(l_dims[i],l_dims[i-1])*0.01
+        params['b'+str(i)]=np.zeros((l_dims[i],1))
+    
+    return params
+
+
+def forwardpropagate(params, x, y, l_fun):
+    a_prev=x
+    l=len(l_fun)+1
+    
+    actis={}
+    
+    actis['a0']=x
+    
+    for i in range(1,l):
+        
+        w=params['w'+str(i)]
+        b=params['b'+str(i)]
+        
+        z=np.dot(w,a_prev)+b
+        
+        actis['z'+str(i)]=z
+        
+        if l_fun[i-1]=="relu":
+            a=relu(z)
+        elif l_fun[i-1]=="sigmoid":
+            a=sigmoid(z)
+        elif l_fun[i-1]=="tanh":
+            a=np.tanh(z)
+        
+        actis['a'+str(i)]=a
+        
+        a_prev=a
+        
+    return actis
+
+def backpropagate(params,actis,x,y,l_fun):
+    l=len(l_fun)+1
+    
+    m=x.shape[1]
+    
+    al=actis['a'+str(l-1)]
+    dal=-y/al+(1-y)/(1-al)
+    
+    cost = (1./m) * (-np.dot(y,np.log(al).T) - np.dot(1-y, np.log(1-al).T))
+    
+    derivs={}
+    
+    for i in reversed(range(1,l)):
+        
+        if l_fun[i-1]=="sigmoid":
+            dzl=sigmoid_backward(actis,dal,i)
+        elif l_fun[i-1]=="relu":
+            dzl=relu_backward(actis,dal,i)
+        elif l_fun[i-1]=="tanh":
+            dzl=tanh_backward(actis,dal,i)
+            
+        al_prev=actis['a'+str(i-1)]
+        
+        dwl=np.dot(dzl,al_prev.T)/m
+        dbl=np.sum(dzl, axis=1, keepdims=True) / m
+        
+        wl=params['w'+str(i)]
+        dal_prev=np.dot(wl.T,dzl)
+        
+        derivs['dw'+str(i)]=dwl
+        derivs['db'+str(i)]=dbl
+        
+        dal=dal_prev
+        al=al_prev
+        
+    return derivs,cost
+
+def gradient_descent(params,x,y,l_fun,n_i,lr):
+    for i in range(n_i):
+        actis=forwardpropagate(params, x, y, l_fun)
+        derivs,cost=backpropagate(params,actis,x,y,l_fun)
+        
+        if i%300==0:
+            print("cost at %i is %f" %(i,cost))
+            
+        l=len(l_fun)+1
+        
+        for j in range(1,l):
+            params['w'+str(j)]=params['w'+str(j)]-lr*derivs['dw'+str(j)]
+            params['b'+str(j)]=params['b'+str(j)]-lr*derivs['db'+str(j)]
+            
+    return params
+
+def prediction(params,x,y,l_fun):
+    m = x.shape[1]
+    
+    l=len(l_fun)
+    
+    p = np.zeros((1,m))
+    
+    a = forwardpropagate(params,x,y,l_fun)
+    
+    probs=a['a'+str(l)]
+
+    for i in range(0, probs.shape[1]):
+        if probs[0,i] > 0.5:
+            p[0,i] = 1
+        else:
+            p[0,i] = 0
+            
+    print("Accuracy: "  + str(np.sum((p == y)/m)))
+        
+    return p
+
+def model(x_train, y_train, x_test, y_test, n_i, lr,l_fun,l_dims):
+    params=initialization(l_dims)
+    
+    params=gradient_descent(params, x_train, y_train, l_fun, n_i, lr)
+    
+    p1=prediction(params,x_train,y_train,l_fun)
+    p2=prediction(params,x_test,y_test,l_fun)
+
+model(x_train,y_train, x_test, y_test, n_i, lr, l_fun, l_dims)
